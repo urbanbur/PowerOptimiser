@@ -1,104 +1,242 @@
 blueprint:
-  description: Controls EV charging and optional loads based on PV, battery SoC, and
-    peak limits.
+  name: Smart Load Manager with Dynamic Peak Control
+  description: >
+    Dynamically control EV charging and optional loads (heat pump, sauna) based on PV, battery SoC,
+    and time-based peak limits with seasonal and weekend adjustments.
   domain: automation
   input:
-    battery_soc:
-      name: Battery SoC Sensor
-      selector:
-        entity:
-          domain: sensor
-    battery_soc_emergency:
-      default: 30
-      name: Minimum Battery SoC (Emergency)
-      selector:
-        number:
-          max: 100
-          min: 0
-          step: 1
-    battery_soc_min:
-      default: 60
-      name: Minimum Battery SoC (Normal)
-      selector:
-        number:
-          max: 100
-          min: 0
-          step: 1
-    emergency_override:
-      name: Emergency Override
-      selector:
-        entity:
-          domain: input_boolean
-    grid_power:
-      name: Grid Power Sensor
-      selector:
-        entity:
-          domain: sensor
-    heat_pump:
-      default: ''
-      name: Heat Pump Switch (Optional)
-      selector:
-        entity:
-          domain: switch
-    home_consumption:
-      name: Home Consumption Sensor
-      selector:
-        entity:
-          domain: sensor
-    hyundai_charger:
-      name: Hyundai Charging Current
-      selector:
-        entity:
-          domain: number
-    peak_p1:
-      name: Peak Limit P1
-      selector:
-        number:
-          max: 20
-          min: 1
-          step: 0.1
-    peak_p2:
-      name: Peak Limit P2
-      selector:
-        number:
-          max: 20
-          min: 1
-          step: 0.1
-    peak_p3:
-      name: Peak Limit P3
-      selector:
-        number:
-          max: 20
-          min: 1
-          step: 0.1
-    peak_p4:
-      name: Peak Limit P4
-      selector:
-        number:
-          max: 20
-          min: 1
-          step: 0.1
-    peak_p5:
-      name: Peak Limit P5
-      selector:
-        number:
-          max: 20
-          min: 1
-          step: 0.1
     pv_power:
       name: PV Power Sensor
       selector:
         entity:
           domain: sensor
-    sauna:
-      default: ''
-      name: Sauna Switch (Optional)
+    grid_power:
+      name: Grid Power Sensor
       selector:
         entity:
-          domain: switch
+          domain: sensor
+    home_consumption:
+      name: Home Consumption Sensor
+      selector:
+        entity:
+          domain: sensor
+    battery_soc:
+      name: Battery SoC Sensor
+      selector:
+        entity:
+          domain: sensor
+    emergency_override:
+      name: Emergency Override
+      selector:
+        entity:
+          domain: input_boolean
     tesla_charger:
-      name: Tesla Charging Current
+      name: Tesla Charging Current (number entity)
       selector:
         entity:
           domain: number
-  name: Smart Load Manager with Optional Heat Pump and Sauna
+    hyundai_charger:
+      name: Hyundai Charging Current (number entity)
+      selector:
+        entity:
+          domain: number
+    heat_pump:
+      name: Heat Pump Switch (optional)
+      default: ""
+      selector:
+        entity:
+          domain: switch
+          multiple: false
+    sauna:
+      name: Sauna Switch (optional)
+      default: ""
+      selector:
+        entity:
+          domain: switch
+          multiple: false
+    peak_p1:
+      name: Peak Limit P1 (kW)
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 0.1
+    peak_p2:
+      name: Peak Limit P2 (kW)
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 0.1
+    peak_p3:
+      name: Peak Limit P3 (kW)
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 0.1
+    peak_p4:
+      name: Peak Limit P4 (kW)
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 0.1
+    peak_p5:
+      name: Peak Limit P5 (kW)
+      selector:
+        number:
+          min: 1
+          max: 20
+          step: 0.1
+    battery_soc_min:
+      name: Minimum Battery SoC (Normal)
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+    battery_soc_emergency:
+      name: Minimum Battery SoC (Emergency)
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+
+trigger:
+  - platform: time_pattern
+    minutes: "/1"
+
+variables:
+  now_hour: "{{ now().hour }}"
+  now_weekday: "{{ now().weekday() }}"
+  now_month: "{{ now().month }}"
+  is_weekend: "{{ now_weekday in [5, 6] }}"
+  is_summer: "{{ now_month in [3,4,5,6,7,8,9,10] }}"
+  base_priority: >
+    {% if now_hour < 6 %}
+      3
+    {% elif now_hour < 7 %}
+      2
+    {% elif now_hour < 14 %}
+      1
+    {% elif now_hour < 16 %}
+      2
+    {% elif now_hour < 20 %}
+      1
+    {% elif now_hour < 22 %}
+      2
+    {% else %}
+      3
+    {% endif %}
+  adjusted_priority: >
+    {% set p = base_priority + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
+    {{ [p, 5] | min }}
+  peak_limit: >
+    {% set p = adjusted_priority %}
+    {% if p == 1 %}
+      {{ input.peak_p1 }}
+    {% elif p == 2 %}
+      {{ input.peak_p2 }}
+    {% elif p == 3 %}
+      {{ input.peak_p3 }}
+    {% elif p == 4 %}
+      {{ input.peak_p4 }}
+    {% else %}
+      {{ input.peak_p5 }}
+    {% endif %}
+  pv: "{{ states(input.pv_power) | float(0) }}"
+  load: "{{ states(input.home_consumption) | float(0) }}"
+  grid: "{{ states(input.grid_power) | float(0) }}"
+  soc: "{{ states(input.battery_soc) | float(100) }}"
+  emergency: "{{ is_state(input.emergency_override, 'on') }}"
+  net_power: >
+    {% if emergency and soc > input.battery_soc_emergency %}
+      {{ grid }}
+    {% else %}
+      {{ load - pv }}
+    {% endif %}
+  allow_discharge: >
+    {% if emergency %}
+      {{ soc > input.battery_soc_emergency }}
+    {% else %}
+      {{ soc > input.battery_soc_min }}
+    {% endif %}
+  tesla_current: "{{ states(input.tesla_charger) | float(16) }}"
+  tesla_phases: 3
+  voltage: 230
+  tesla_power_per_amp: "{{ tesla_phases * voltage / 1000 }}"
+  excess_power: "{{ net_power - peak_limit | float(0) }}"
+  reduce_amps: "{{ (excess_power / tesla_power_per_amp) | round(1) if excess_power > 0 else 0 }}"
+  new_tesla_current: "{{ [tesla_current - reduce_amps, 6] | max | round(1) }}"
+  hyundai_allowed: "{{ adjusted_priority >= 3 }}"
+
+action:
+  - service: number.set_value
+    target:
+      entity_id: !input tesla_charger
+    data:
+      value: "{{ new_tesla_current }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ hyundai_allowed }}"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input hyundai_charger
+            data:
+              value: 10
+      - conditions:
+          - condition: template
+            value_template: "{{ not hyundai_allowed }}"
+        sequence:
+          - service: number.set_value
+            target:
+              entity_id: !input hyundai_charger
+            data:
+              value: 6
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ input.heat_pump != '' }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ excess_power > 0 }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input heat_pump
+              - conditions:
+                  - condition: template
+                    value_template: "{{ excess_power <= 0 }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input heat_pump
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ input.sauna != '' }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ excess_power > 0 }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input sauna
+              - conditions:
+                  - condition: template
+                    value_template: "{{ excess_power <= 0 }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input sauna
+mode: single

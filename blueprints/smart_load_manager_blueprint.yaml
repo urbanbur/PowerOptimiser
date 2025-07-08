@@ -1,5 +1,5 @@
 blueprint:
-  name: Smart Load Manager with Dynamic Peak Control
+  name: Smart Load Manager with Optional Loads
   description: >
     Dynamically control EV charging and optional loads (heat pump, sauna) based on PV, battery SoC,
     and time-based peak limits with seasonal and weekend adjustments.
@@ -47,6 +47,7 @@ blueprint:
         entity:
           domain: switch
           multiple: false
+          include_entities: []
     sauna:
       name: Sauna Switch (optional)
       default: ""
@@ -54,6 +55,7 @@ blueprint:
         entity:
           domain: switch
           multiple: false
+          include_entities: []
     peak_p1:
       name: Peak Limit P1 (kW)
       selector:
@@ -135,7 +137,7 @@ variables:
   adjusted_priority: >
     {% set p = base_priority + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
     {{ [p, 5] | min }}
-  peak_limit: >
+  peak_limit_kw: >
     {% set p = adjusted_priority %}
     {% if p == 1 %}
       {{ input.peak_p1 }}
@@ -153,90 +155,93 @@ variables:
   grid: "{{ states(input.grid_power) | float(0) }}"
   soc: "{{ states(input.battery_soc) | float(100) }}"
   emergency: "{{ is_state(input.emergency_override, 'on') }}"
-  net_power: >
-    {% if emergency and soc > input.battery_soc_emergency %}
-      {{ grid }}
-    {% else %}
-      {{ load - pv }}
-    {% endif %}
+  net_peak: "{{ grid if emergency and soc > input.battery_soc_emergency else load - pv }}"
   allow_discharge: >
     {% if emergency %}
       {{ soc > input.battery_soc_emergency }}
     {% else %}
       {{ soc > input.battery_soc_min }}
     {% endif %}
-  tesla_current: "{{ states(input.tesla_charger) | float(16) }}"
+  tesla_current: "{{ states(input.tesla_charger) | float(6) }}"
   tesla_phases: 3
   voltage: 230
   tesla_power_per_amp: "{{ tesla_phases * voltage / 1000 }}"
-  excess_power: "{{ net_power - peak_limit | float(0) }}"
-  reduce_amps: "{{ (excess_power / tesla_power_per_amp) | round(1) if excess_power > 0 else 0 }}"
-  new_tesla_current: "{{ [tesla_current - reduce_amps, 6] | max | round(1) }}"
+  excess_kw: "{{ [net_peak - peak_limit_kw, 0] | max }}"
+  reduction_amps: "{{ (excess_kw / tesla_power_per_amp) | round(1) }}"
+  new_tesla_current: "{{ [tesla_current - reduction_amps, 6] | max }}"
   hyundai_allowed: "{{ adjusted_priority >= 3 }}"
 
 action:
-  - service: number.set_value
-    target:
-      entity_id: !input tesla_charger
-    data:
-      value: "{{ new_tesla_current }}"
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ hyundai_allowed }}"
+            value_template: "{{ net_peak > peak_limit_kw }}"
         sequence:
           - service: number.set_value
-            target:
-              entity_id: !input hyundai_charger
             data:
-              value: 10
-      - conditions:
-          - condition: template
-            value_template: "{{ not hyundai_allowed }}"
-        sequence:
-          - service: number.set_value
+              value: "{{ new_tesla_current }}"
             target:
-              entity_id: !input hyundai_charger
-            data:
-              value: 6
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ input.heat_pump != '' }}"
-        sequence:
+              entity_id: !input tesla_charger
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ excess_power > 0 }}"
+                    value_template: "{{ hyundai_allowed }}"
+                sequence:
+                  - service: number.set_value
+                    data:
+                      value: 10
+                    target:
+                      entity_id: !input hyundai_charger
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ input.heat_pump != '' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
                       entity_id: !input heat_pump
-              - conditions:
-                  - condition: template
-                    value_template: "{{ excess_power <= 0 }}"
-                sequence:
-                  - service: switch.turn_on
-                    target:
-                      entity_id: !input heat_pump
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ input.sauna != '' }}"
-        sequence:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ excess_power > 0 }}"
+                    value_template: "{{ input.sauna != '' }}"
                 sequence:
                   - service: switch.turn_off
                     target:
                       entity_id: !input sauna
+      - conditions:
+          - condition: template
+            value_template: "{{ net_peak <= peak_limit_kw and allow_discharge }}"
+        sequence:
+          - service: number.set_value
+            data:
+              value: 16
+            target:
+              entity_id: !input tesla_charger
+          - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ excess_power <= 0 }}"
+                    value_template: "{{ hyundai_allowed }}"
+                sequence:
+                  - service: number.set_value
+                    data:
+                      value: 10
+                    target:
+                      entity_id: !input hyundai_charger
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ input.heat_pump != '' }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input heat_pump
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ input.sauna != '' }}"
                 sequence:
                   - service: switch.turn_on
                     target:
                       entity_id: !input sauna
 mode: single
+

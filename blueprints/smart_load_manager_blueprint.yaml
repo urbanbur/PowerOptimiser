@@ -1,8 +1,9 @@
+
 blueprint:
-  name: Smart Load Manager with Optional Loads
+  name: Smart Load Manager with Dynamic Peak Priorities
   description: >
-    Dynamically control EV charging and optional loads (heat pump, sauna) based on PV, battery SoC,
-    and time-based peak limits with seasonal and weekend adjustments.
+    Dynamically control EV charging and suspendable loads based on PV, battery SoC,
+    and time-based peak limits with automatic priority adjustment for weekends and summer.
   domain: automation
   input:
     pv_power:
@@ -46,46 +47,71 @@ blueprint:
       selector:
         entity:
           domain: switch
-          multiple: false
-          include_entities: []
     sauna:
       name: Sauna Switch (optional)
       default: ""
       selector:
         entity:
           domain: switch
-          multiple: false
-          include_entities: []
+    ac_unit_1:
+      name: Air Conditioner 1 (optional)
+      default: ""
+      selector:
+        entity:
+          domain: switch
+    ac_unit_2:
+      name: Air Conditioner 2 (optional)
+      default: ""
+      selector:
+        entity:
+          domain: switch
+    ac_unit_3:
+      name: Air Conditioner 3 (optional)
+      default: ""
+      selector:
+        entity:
+          domain: switch
+    ac_unit_4:
+      name: Air Conditioner 4 (optional)
+      default: ""
+      selector:
+        entity:
+          domain: switch
     peak_p1:
-      name: Peak Limit P1 (kW)
+      name: Peak Limit for Priority P1 (kW)
+      default: 3.0
       selector:
         number:
           min: 1
           max: 20
           step: 0.1
     peak_p2:
-      name: Peak Limit P2 (kW)
+      name: Peak Limit for Priority P2 (kW)
+      default: 4.0
       selector:
         number:
           min: 1
           max: 20
           step: 0.1
     peak_p3:
-      name: Peak Limit P3 (kW)
+      name: Peak Limit for Priority P3 (kW)
+      default: 5.0
       selector:
         number:
           min: 1
           max: 20
           step: 0.1
     peak_p4:
-      name: Peak Limit P4 (kW)
+      name: Peak Limit for Priority P4 (kW)
+      default: 6.0
       selector:
         number:
           min: 1
           max: 20
           step: 0.1
     peak_p5:
-      name: Peak Limit P5 (kW)
+      name: Peak Limit for Priority P5 (kW)
+      default: 7.0
       selector:
         number:
           min: 1
@@ -114,31 +140,60 @@ trigger:
 
 variables:
   now_hour: "{{ now().hour }}"
-  now_weekday: "{{ now().weekday() }}"
-  now_month: "{{ now().month }}"
-  is_weekend: "{{ now_weekday in [5, 6] }}"
-  is_summer: "{{ now_month in [3,4,5,6,7,8,9,10] }}"
+  now_minute: "{{ now().minute }}"
+  now_time: "{{ now().hour * 60 + now().minute }}"
+  is_weekend: "{{ now().weekday() >= 5 }}"
+  is_summer: "{{ now().month in [3,4,5,6,7,8,9,10] }}"
+  pv: "{{ states(input.pv_power) | float(0) }}"
+  grid: "{{ states(input.grid_power) | float(0) }}"
+  load: "{{ states(input.home_consumption) | float(0) }}"
+  soc: "{{ states(input.battery_soc) | float(100) }}"
+  emergency: "{{ is_state(input.emergency_override, 'on') }}"
+  grid_demand: "{{ load - pv }}"
+  allow_discharge: >
+    {% if emergency %}
+      {{ soc > input.battery_soc_emergency }}
+    {% else %}
+      {{ soc > input.battery_soc_min }}
+    {% endif %}
+  
+  # Calculate available power for loads
+  available_power: "{{ peak_limit_kw - grid_demand }}"
+
+  # Determine base priority based on time
   base_priority: >
-    {% if now_hour < 6 %}
+    {% set t = now().hour * 60 + now().minute %}
+    {% if 0 <= t < 360 %}
       3
-    {% elif now_hour < 7 %}
+    {% elif 360 <= t < 420 %}
       2
-    {% elif now_hour < 14 %}
+    {% elif 420 <= t < 840 %}
       1
-    {% elif now_hour < 16 %}
+    {% elif 840 <= t < 960 %}
       2
-    {% elif now_hour < 20 %}
+    {% elif 960 <= t < 1200 %}
       1
-    {% elif now_hour < 22 %}
+    {% elif 1200 <= t < 1320 %}
       2
+    {% elif 1320 <= t < 1440 %}
+      3
     {% else %}
       3
     {% endif %}
+
+  # Adjust priority for weekend and summer
   adjusted_priority: >
-    {% set p = base_priority + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
-    {{ [p, 5] | min }}
+    {% set p = base_priority | int %}
+    {% set adj = p + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
+    {% if adj > 5 %}
+      5
+    {% else %}
+      adj
+    {% endif %}
+
+  # Map adjusted priority to peak limit
   peak_limit_kw: >
-    {% set p = adjusted_priority %}
+    {% set p = adjusted_priority | int %}
     {% if p == 1 %}
       {{ input.peak_p1 }}
     {% elif p == 2 %}
@@ -150,98 +205,304 @@ variables:
     {% else %}
       {{ input.peak_p5 }}
     {% endif %}
-  pv: "{{ states(input.pv_power) | float(0) }}"
-  load: "{{ states(input.home_consumption) | float(0) }}"
-  grid: "{{ states(input.grid_power) | float(0) }}"
-  soc: "{{ states(input.battery_soc) | float(100) }}"
-  emergency: "{{ is_state(input.emergency_override, 'on') }}"
-  net_peak: "{{ grid if emergency and soc > input.battery_soc_emergency else load - pv }}"
-  allow_discharge: >
-    {% if emergency %}
-      {{ soc > input.battery_soc_emergency }}
-    {% else %}
-      {{ soc > input.battery_soc_min }}
-    {% endif %}
-  tesla_current: "{{ states(input.tesla_charger) | float(6) }}"
-  tesla_phases: 3
-  voltage: 230
-  tesla_power_per_amp: "{{ tesla_phases * voltage / 1000 }}"
-  excess_kw: "{{ [net_peak - peak_limit_kw, 0] | max }}"
-  reduction_amps: "{{ (excess_kw / tesla_power_per_amp) | round(1) }}"
-  new_tesla_current: "{{ [tesla_current - reduction_amps, 6] | max }}"
-  hyundai_allowed: "{{ adjusted_priority >= 3 }}"
 
 action:
   - choose:
+      # Emergency operation: Allow battery discharge for higher Tesla charging
       - conditions:
           - condition: template
-            value_template: "{{ net_peak > peak_limit_kw }}"
+            value_template: "{{ emergency and allow_discharge }}"
         sequence:
-          - service: number.set_value
-            data:
-              value: "{{ new_tesla_current }}"
-            target:
-              entity_id: !input tesla_charger
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ hyundai_allowed }}"
-                sequence:
-                  - service: number.set_value
-                    data:
-                      value: 10
-                    target:
-                      entity_id: !input hyundai_charger
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ input.heat_pump != '' }}"
-                sequence:
-                  - service: switch.turn_off
-                    target:
-                      entity_id: !input heat_pump
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ input.sauna != '' }}"
-                sequence:
-                  - service: switch.turn_off
-                    target:
-                      entity_id: !input sauna
-      - conditions:
-          - condition: template
-            value_template: "{{ net_peak <= peak_limit_kw and allow_discharge }}"
-        sequence:
+          # High power Tesla charging during emergency
           - service: number.set_value
             data:
               value: 16
             target:
               entity_id: !input tesla_charger
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ hyundai_allowed }}"
-                sequence:
-                  - service: number.set_value
-                    data:
-                      value: 10
-                    target:
-                      entity_id: !input hyundai_charger
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ input.heat_pump != '' }}"
-                sequence:
-                  - service: switch.turn_on
-                    target:
-                      entity_id: !input heat_pump
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ input.sauna != '' }}"
-                sequence:
-                  - service: switch.turn_on
-                    target:
-                      entity_id: !input sauna
+          # Reduce Hyundai charging to prioritize Tesla
+          - service: number.set_value
+            data:
+              value: 6
+            target:
+              entity_id: !input hyundai_charger
+          # Suspend heat pump to save power
+          - if:
+              - condition: template
+                value_template: "{{ input.heat_pump != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input heat_pump
+          # Keep sauna available during emergency
+          - if:
+              - condition: template
+                value_template: "{{ input.sauna != '' }}"
+            then:
+              - service: switch.turn_on
+                target:
+                  entity_id: !input sauna
+      
+      # Emergency but low battery: End emergency operation
+      - conditions:
+          - condition: template
+            value_template: "{{ emergency and not allow_discharge }}"
+        sequence:
+          # Reduce all loads when battery is too low
+          - service: number.set_value
+            data:
+              value: 6
+            target:
+              entity_id: !input tesla_charger
+          - service: number.set_value
+            data:
+              value: 6
+            target:
+              entity_id: !input hyundai_charger
+          - if:
+              - condition: template
+                value_template: "{{ input.heat_pump != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input heat_pump
+          - if:
+              - condition: template
+                value_template: "{{ input.sauna != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input sauna
+          # Turn off all AC units
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_1 != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_1
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_2 != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_2
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_3 != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_3
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_4 != '' }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_4
+      
+      # Normal operation: Grid demand exceeds peak limit
+      - conditions:
+          - condition: template
+            value_template: "{{ not emergency and grid_demand > peak_limit_kw }}"
+        sequence:
+          # Calculate how much we need to reduce
+          - variables:
+              power_deficit: "{{ grid_demand - peak_limit_kw }}"
+          
+          # Suspension order: Sauna -> all AC -> Hyundai -> Heat Pump
+          # Step 1: Suspend Sauna (estimated 2kW)
+          - if:
+              - condition: template
+                value_template: "{{ input.sauna != '' and power_deficit > 0 }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input sauna
+              - variables:
+                  power_deficit: "{{ [0, power_deficit - 2] | max }}"
+          
+          # Step 2: Suspend AC units (estimated 1.5kW each)
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_1 != '' and power_deficit > 0 }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_1
+              - variables:
+                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_2 != '' and power_deficit > 0 }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_2
+              - variables:
+                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_3 != '' and power_deficit > 0 }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_3
+              - variables:
+                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_4 != '' and power_deficit > 0 }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input ac_unit_4
+              - variables:
+                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
+          
+          # Step 3: Reduce Hyundai charging (from max to min saves ~1kW)
+          - if:
+              - condition: template
+                value_template: "{{ power_deficit > 0 }}"
+            then:
+              - service: number.set_value
+                data:
+                  value: 6
+                target:
+                  entity_id: !input hyundai_charger
+              - variables:
+                  power_deficit: "{{ [0, power_deficit - 1] | max }}"
+          
+          # Step 4: Suspend Heat Pump (estimated 3kW)
+          - if:
+              - condition: template
+                value_template: "{{ input.heat_pump != '' and power_deficit > 0 }}"
+            then:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input heat_pump
+          
+          # Always reduce Tesla charging in over-peak situations
+          - service: number.set_value
+            data:
+              value: 6
+            target:
+              entity_id: !input tesla_charger
+      
+      # Normal operation: Grid demand within limits
+      - conditions:
+          - condition: template
+            value_template: "{{ not emergency and grid_demand <= peak_limit_kw }}"
+        sequence:
+          # Calculate available power for gradual load increase
+          - variables:
+              power_margin: "{{ peak_limit_kw - grid_demand }}"
+          
+          # Tesla charging based on available power
+          - service: number.set_value
+            data:
+              value: >
+                {% if power_margin > 3 %}
+                  12
+                {% elif power_margin > 2 %}
+                  10
+                {% else %}
+                  8
+                {% endif %}
+            target:
+              entity_id: !input tesla_charger
+          
+          # Hyundai charging based on available power
+          - service: number.set_value
+            data:
+              value: >
+                {% if power_margin > 2 %}
+                  10
+                {% elif power_margin > 1 %}
+                  8
+                {% else %}
+                  6
+                {% endif %}
+            target:
+              entity_id: !input hyundai_charger
+          
+          # Enable loads in reverse suspension order when power allows
+          # Priority 1: Heat Pump (needs 3kW margin)
+          - if:
+              - condition: template
+                value_template: "{{ input.heat_pump != '' }}"
+            then:
+              - service: >
+                  {% if power_margin > 3 %}
+                    switch.turn_on
+                  {% else %}
+                    switch.turn_off
+                  {% endif %}
+                target:
+                  entity_id: !input heat_pump
+          
+          # Priority 2: AC units (need 1.5kW margin each)
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_1 != '' }}"
+            then:
+              - service: >
+                  {% if power_margin > 1.5 %}
+                    switch.turn_on
+                  {% else %}
+                    switch.turn_off
+                  {% endif %}
+                target:
+                  entity_id: !input ac_unit_1
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_2 != '' }}"
+            then:
+              - service: >
+                  {% if power_margin > 3 %}
+                    switch.turn_on
+                  {% else %}
+                    switch.turn_off
+                  {% endif %}
+                target:
+                  entity_id: !input ac_unit_2
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_3 != '' }}"
+            then:
+              - service: >
+                  {% if power_margin > 4.5 %}
+                    switch.turn_on
+                  {% else %}
+                    switch.turn_off
+                  {% endif %}
+                target:
+                  entity_id: !input ac_unit_3
+          - if:
+              - condition: template
+                value_template: "{{ input.ac_unit_4 != '' }}"
+            then:
+              - service: >
+                  {% if power_margin > 6 %}
+                    switch.turn_on
+                  {% else %}
+                    switch.turn_off
+                  {% endif %}
+                target:
+                  entity_id: !input ac_unit_4
+          
+          # Priority 3: Sauna (needs 2kW margin)
+          - if:
+              - condition: template
+                value_template: "{{ input.sauna != '' }}"
+            then:
+              - service: >
+                  {% if power_margin > 2 %}
+                    switch.turn_on
+                  {% else %}
+                    switch.turn_off
+                  {% endif %}
+                target:
+                  entity_id: !input sauna
 mode: single
-

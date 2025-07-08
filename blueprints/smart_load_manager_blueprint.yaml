@@ -315,69 +315,53 @@ action:
           # Step 1: Suspend Sauna (estimated 2kW)
           - if:
               - condition: template
-                value_template: "{{ input.sauna != '' and power_deficit > 0 }}"
+                value_template: "{{ input.sauna != '' }}"
             then:
               - service: switch.turn_off
                 target:
                   entity_id: !input sauna
-              - variables:
-                  power_deficit: "{{ [0, power_deficit - 2] | max }}"
           
           # Step 2: Suspend AC units (estimated 1.5kW each)
           - if:
               - condition: template
-                value_template: "{{ input.ac_unit_1 != '' and power_deficit > 0 }}"
+                value_template: "{{ input.ac_unit_1 != '' }}"
             then:
               - service: switch.turn_off
                 target:
                   entity_id: !input ac_unit_1
-              - variables:
-                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
           - if:
               - condition: template
-                value_template: "{{ input.ac_unit_2 != '' and power_deficit > 0 }}"
+                value_template: "{{ input.ac_unit_2 != '' }}"
             then:
               - service: switch.turn_off
                 target:
                   entity_id: !input ac_unit_2
-              - variables:
-                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
           - if:
               - condition: template
-                value_template: "{{ input.ac_unit_3 != '' and power_deficit > 0 }}"
+                value_template: "{{ input.ac_unit_3 != '' }}"
             then:
               - service: switch.turn_off
                 target:
                   entity_id: !input ac_unit_3
-              - variables:
-                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
           - if:
               - condition: template
-                value_template: "{{ input.ac_unit_4 != '' and power_deficit > 0 }}"
+                value_template: "{{ input.ac_unit_4 != '' }}"
             then:
               - service: switch.turn_off
                 target:
                   entity_id: !input ac_unit_4
-              - variables:
-                  power_deficit: "{{ [0, power_deficit - 1.5] | max }}"
           
-          # Step 3: Reduce Hyundai charging (from max to min saves ~1kW)
-          - if:
-              - condition: template
-                value_template: "{{ power_deficit > 0 }}"
-            then:
-              - service: number.set_value
-                data:
-                  value: 6
-                target:
-                  entity_id: !input hyundai_charger
-              - variables:
-                  power_deficit: "{{ [0, power_deficit - 1] | max }}"
+          # Step 3: Reduce Hyundai charging to minimum
+          - service: number.set_value
+            data:
+              value: 6
+            target:
+              entity_id: !input hyundai_charger
           
           # Step 4: Suspend Heat Pump (estimated 3kW)
           - if:
               - condition: template
-                value_template: "{{ input.heat_pump != '' and power_deficit > 0 }}"
+                value_template: "{{ input.heat_pump != '' }}"
             then:
               - service: switch.turn_off
                 target:

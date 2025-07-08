@@ -13,7 +13,7 @@ homeassistant:
 
 ### Step 2: Install Package
 1. Create `/config/packages/` directory
-2. Copy `smart_load_manager.yaml` to `/config/packages/`
+2. Copy `/packages/smart_load_manager.yaml` to `/config/packages/`
 3. Update entity names (see Entity Mapping below)
 4. Restart Home Assistant
 

@@ -1,0 +1,450 @@
+# Smart Load Manager Package
+# Place this file in: /config/packages/smart_load_manager.yaml
+# 
+# This package contains all entities related to the Smart Load Manager:
+# - Template sensors for calculations and status
+# - Input helpers for configuration
+# - Scripts for manual control
+# - Automations for logging and monitoring
+
+# ============================================================================
+# TEMPLATE SENSORS
+# ============================================================================
+template:
+  - sensor:
+      # Calculate grid demand (load - PV production)
+      - name: "Grid Demand Calculated"
+        unique_id: smart_load_manager_grid_demand
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set load = states('sensor.home_consumption') | float(0) %}
+          {% set pv = states('sensor.pv_power') | float(0) %}
+          {{ (load - pv) | round(2) }}
+        icon: mdi:gauge
+        attributes:
+          load_power: "{{ states('sensor.home_consumption') | float(0) }}"
+          pv_power: "{{ states('sensor.pv_power') | float(0) }}"
+
+      # Current peak limit based on time and conditions
+      - name: "Current Peak Limit"
+        unique_id: smart_load_manager_peak_limit
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set t = now().hour * 60 + now().minute %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% set is_summer = now().month in [3,4,5,6,7,8,9,10] %}
+          
+          {# Determine base priority #}
+          {% if 0 <= t < 360 %}
+            {% set base_priority = 3 %}
+          {% elif 360 <= t < 420 %}
+            {% set base_priority = 2 %}
+          {% elif 420 <= t < 840 %}
+            {% set base_priority = 1 %}
+          {% elif 840 <= t < 960 %}
+            {% set base_priority = 2 %}
+          {% elif 960 <= t < 1200 %}
+            {% set base_priority = 1 %}
+          {% elif 1200 <= t < 1320 %}
+            {% set base_priority = 2 %}
+          {% elif 1320 <= t < 1440 %}
+            {% set base_priority = 3 %}
+          {% else %}
+            {% set base_priority = 3 %}
+          {% endif %}
+          
+          {# Adjust for weekend and summer #}
+          {% set adjusted = base_priority + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
+          {% set priority = [adjusted, 5] | min %}
+          
+          {# Map to peak limit #}
+          {% if priority == 1 %}
+            {{ states('input_number.smart_load_peak_p1') | float(3.0) }}
+          {% elif priority == 2 %}
+            {{ states('input_number.smart_load_peak_p2') | float(4.0) }}
+          {% elif priority == 3 %}
+            {{ states('input_number.smart_load_peak_p3') | float(5.0) }}
+          {% elif priority == 4 %}
+            {{ states('input_number.smart_load_peak_p4') | float(6.0) }}
+          {% else %}
+            {{ states('input_number.smart_load_peak_p5') | float(7.0) }}
+          {% endif %}
+        icon: mdi:speedometer
+        attributes:
+          base_priority: >
+            {% set t = now().hour * 60 + now().minute %}
+            {% if 0 <= t < 360 %}3{% elif 360 <= t < 420 %}2{% elif 420 <= t < 840 %}1{% elif 840 <= t < 960 %}2{% elif 960 <= t < 1200 %}1{% elif 1200 <= t < 1320 %}2{% elif 1320 <= t < 1440 %}3{% else %}3{% endif %}
+          is_weekend: "{{ now().weekday() >= 5 }}"
+          is_summer: "{{ now().month in [3,4,5,6,7,8,9,10] }}"
+          current_priority: >
+            {% set t = now().hour * 60 + now().minute %}
+            {% set is_weekend = now().weekday() >= 5 %}
+            {% set is_summer = now().month in [3,4,5,6,7,8,9,10] %}
+            {% if 0 <= t < 360 %}{% set base_priority = 3 %}{% elif 360 <= t < 420 %}{% set base_priority = 2 %}{% elif 420 <= t < 840 %}{% set base_priority = 1 %}{% elif 840 <= t < 960 %}{% set base_priority = 2 %}{% elif 960 <= t < 1200 %}{% set base_priority = 1 %}{% elif 1200 <= t < 1320 %}{% set base_priority = 2 %}{% elif 1320 <= t < 1440 %}{% set base_priority = 3 %}{% else %}{% set base_priority = 3 %}{% endif %}
+            {% set adjusted = base_priority + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
+            P{{ [adjusted, 5] | min }}
+
+      # Power margin available for additional loads
+      - name: "Power Margin"
+        unique_id: smart_load_manager_power_margin
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
+          {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
+          {{ (peak_limit - grid_demand) | round(2) }}
+        icon: mdi:battery-plus
+        attributes:
+          percentage_used: >
+            {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
+            {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
+            {{ ((grid_demand / peak_limit * 100) | round(1)) if peak_limit > 0 else 0 }}
+
+      # Current priority level display
+      - name: "Current Priority Level"
+        unique_id: smart_load_manager_priority_level
+        state: >
+          {% set t = now().hour * 60 + now().minute %}
+          {% set is_weekend = now().weekday() >= 5 %}
+          {% set is_summer = now().month in [3,4,5,6,7,8,9,10] %}
+          
+          {# Determine base priority #}
+          {% if 0 <= t < 360 %}
+            {% set base_priority = 3 %}
+          {% elif 360 <= t < 420 %}
+            {% set base_priority = 2 %}
+          {% elif 420 <= t < 840 %}
+            {% set base_priority = 1 %}
+          {% elif 840 <= t < 960 %}
+            {% set base_priority = 2 %}
+          {% elif 960 <= t < 1200 %}
+            {% set base_priority = 1 %}
+          {% elif 1200 <= t < 1320 %}
+            {% set base_priority = 2 %}
+          {% elif 1320 <= t < 1440 %}
+            {% set base_priority = 3 %}
+          {% else %}
+            {% set base_priority = 3 %}
+          {% endif %}
+          
+          {# Adjust for weekend and summer #}
+          {% set adjusted = base_priority + (1 if is_weekend else 0) + (1 if is_summer else 0) %}
+          {% set priority = [adjusted, 5] | min %}
+          
+          P{{ priority }}
+        icon: mdi:priority-high
+
+      # Tesla charging power estimate
+      - name: "Tesla Charging Power"
+        unique_id: smart_load_manager_tesla_power
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set current = states('number.tesla_charging_current') | float(0) %}
+          {{ (current * 0.23) | round(1) }}
+        icon: mdi:lightning-bolt
+        attributes:
+          charging_current: "{{ states('number.tesla_charging_current') | float(0) }}"
+
+      # Hyundai charging power estimate
+      - name: "Hyundai Charging Power"
+        unique_id: smart_load_manager_hyundai_power
+        unit_of_measurement: "kW"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set current = states('number.hyundai_charging_current') | float(0) %}
+          {{ (current * 0.23) | round(1) }}
+        icon: mdi:lightning-bolt
+        attributes:
+          charging_current: "{{ states('number.hyundai_charging_current') | float(0) }}"
+
+      # System status summary
+      - name: "Load Manager Status"
+        unique_id: smart_load_manager_status
+        state: >
+          {% set emergency = is_state('input_boolean.smart_load_emergency_override', 'on') %}
+          {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
+          {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
+          
+          {% if emergency %}
+            Emergency Mode
+          {% elif grid_demand > peak_limit %}
+            Load Reduction Active
+          {% elif grid_demand > (peak_limit * 0.9) %}
+            Near Peak Limit
+          {% else %}
+            Normal Operation
+          {% endif %}
+        icon: >
+          {% set emergency = is_state('input_boolean.smart_load_emergency_override', 'on') %}
+          {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
+          {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
+          
+          {% if emergency %}
+            mdi:alert-circle
+          {% elif grid_demand > peak_limit %}
+            mdi:arrow-down-circle
+          {% elif grid_demand > (peak_limit * 0.9) %}
+            mdi:alert-circle-outline
+          {% else %}
+            mdi:check-circle
+          {% endif %}
+        attributes:
+          grid_demand: "{{ states('sensor.grid_demand_calculated') | float(0) }}"
+          peak_limit: "{{ states('sensor.current_peak_limit') | float(0) }}"
+          emergency_active: "{{ is_state('input_boolean.smart_load_emergency_override', 'on') }}"
+
+  # Binary sensors for status indicators
+  - binary_sensor:
+      - name: "Is Weekend"
+        unique_id: smart_load_manager_is_weekend
+        state: "{{ now().weekday() >= 5 }}"
+        icon: mdi:calendar-weekend
+
+      - name: "Is Summer"
+        unique_id: smart_load_manager_is_summer
+        state: "{{ now().month in [3,4,5,6,7,8,9,10] }}"
+        icon: mdi:weather-sunny
+
+      - name: "Over Peak Limit"
+        unique_id: smart_load_manager_over_peak
+        state: >
+          {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
+          {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
+          {{ grid_demand > peak_limit }}
+        icon: mdi:alert-outline
+
+# ============================================================================
+# INPUT HELPERS
+# ============================================================================
+input_number:
+  # Peak limits for different priority levels
+  smart_load_peak_p1:
+    name: "Peak Limit P1 (Highest Priority)"
+    min: 1
+    max: 20
+    step: 0.1
+    initial: 3.0
+    unit_of_measurement: "kW"
+    icon: mdi:speedometer
+
+  smart_load_peak_p2:
+    name: "Peak Limit P2"
+    min: 1
+    max: 20
+    step: 0.1
+    initial: 4.0
+    unit_of_measurement: "kW"
+    icon: mdi:speedometer
+
+  smart_load_peak_p3:
+    name: "Peak Limit P3"
+    min: 1
+    max: 20
+    step: 0.1
+    initial: 5.0
+    unit_of_measurement: "kW"
+    icon: mdi:speedometer
+
+  smart_load_peak_p4:
+    name: "Peak Limit P4"
+    min: 1
+    max: 20
+    step: 0.1
+    initial: 6.0
+    unit_of_measurement: "kW"
+    icon: mdi:speedometer
+
+  smart_load_peak_p5:
+    name: "Peak Limit P5 (Lowest Priority)"
+    min: 1
+    max: 20
+    step: 0.1
+    initial: 7.0
+    unit_of_measurement: "kW"
+    icon: mdi:speedometer
+
+  # Battery thresholds
+  smart_load_battery_soc_min:
+    name: "Minimum Battery SoC (Normal)"
+    min: 0
+    max: 100
+    step: 1
+    initial: 60
+    unit_of_measurement: "%"
+    icon: mdi:battery-low
+
+  smart_load_battery_soc_emergency:
+    name: "Minimum Battery SoC (Emergency)"
+    min: 0
+    max: 100
+    step: 1
+    initial: 30
+    unit_of_measurement: "%"
+    icon: mdi:battery-alert
+
+input_boolean:
+  smart_load_emergency_override:
+    name: "Emergency Override"
+    icon: mdi:alert-circle
+    initial: false
+
+input_text:
+  smart_load_suspension_order:
+    name: "Load Suspension Order"
+    initial: "Sauna → AC Units → Hyundai → Heat Pump → Tesla"
+    max: 255
+
+# ============================================================================
+# SCRIPTS
+# ============================================================================
+script:
+  smart_load_reset_all_loads:
+    alias: "Smart Load Manager: Reset All Loads"
+    icon: mdi:restart
+    description: "Reset all managed loads to their default states"
+    sequence:
+      - service: switch.turn_on
+        target:
+          entity_id:
+            - switch.heat_pump
+            - switch.sauna
+            - switch.ac_unit_1
+            - switch.ac_unit_2
+            - switch.ac_unit_3
+            - switch.ac_unit_4
+      - service: number.set_value
+        data:
+          value: 10
+        target:
+          entity_id:
+            - number.tesla_charging_current
+            - number.hyundai_charging_current
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.smart_load_emergency_override
+
+  smart_load_emergency_activate:
+    alias: "Smart Load Manager: Activate Emergency Mode"
+    icon: mdi:alert-circle
+    description: "Manually activate emergency mode"
+    sequence:
+      - service: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.smart_load_emergency_override
+      - service: persistent_notification.create
+        data:
+          title: "Smart Load Manager"
+          message: "Emergency mode activated manually"
+          notification_id: smart_load_emergency
+
+  smart_load_emergency_deactivate:
+    alias: "Smart Load Manager: Deactivate Emergency Mode"
+    icon: mdi:check-circle
+    description: "Manually deactivate emergency mode"
+    sequence:
+      - service: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.smart_load_emergency_override
+      - service: persistent_notification.dismiss
+        data:
+          notification_id: smart_load_emergency
+
+# ============================================================================
+# AUTOMATIONS
+# ============================================================================
+automation:
+  - id: smart_load_manager_state_logger
+    alias: "Smart Load Manager: State Logger"
+    description: "Log important state changes for monitoring"
+    trigger:
+      - platform: state
+        entity_id:
+          - sensor.load_manager_status
+          - input_boolean.smart_load_emergency_override
+          - binary_sensor.over_peak_limit
+    action:
+      - service: logbook.log
+        data:
+          name: "Smart Load Manager"
+          message: >
+            Status: {{ states('sensor.load_manager_status') }}
+            Grid Demand: {{ states('sensor.grid_demand_calculated') }}kW
+            Peak Limit: {{ states('sensor.current_peak_limit') }}kW
+            Emergency: {{ states('input_boolean.smart_load_emergency_override') }}
+            Over Peak: {{ states('binary_sensor.over_peak_limit') }}
+
+  - id: smart_load_manager_emergency_notifications
+    alias: "Smart Load Manager: Emergency Notifications"
+    description: "Send notifications for emergency mode changes"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.smart_load_emergency_override
+        to: 'on'
+      - platform: state
+        entity_id: input_boolean.smart_load_emergency_override
+        to: 'off'
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "Smart Load Manager Emergency Mode"
+          message: >
+            Emergency mode {{ 'ACTIVATED' if trigger.to_state.state == 'on' else 'DEACTIVATED' }}
+            
+            Current Status:
+            - Grid Demand: {{ states('sensor.grid_demand_calculated') }}kW
+            - Peak Limit: {{ states('sensor.current_peak_limit') }}kW
+            - Battery SoC: {{ states('sensor.battery_soc') }}%
+            - Priority: {{ states('sensor.current_priority_level') }}
+          notification_id: smart_load_emergency_status
+
+  - id: smart_load_manager_peak_warnings
+    alias: "Smart Load Manager: Peak Limit Warnings"
+    description: "Warn when approaching peak limits"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.grid_demand_calculated
+        above: sensor.current_peak_limit
+        for:
+          minutes: 2
+    condition:
+      - condition: state
+        entity_id: input_boolean.smart_load_emergency_override
+        state: 'off'
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "Smart Load Manager Warning"
+          message: >
+            Grid demand ({{ states('sensor.grid_demand_calculated') }}kW) 
+            exceeds peak limit ({{ states('sensor.current_peak_limit') }}kW)
+            
+            Load reduction should be active.
+          notification_id: smart_load_peak_warning
+
+# ============================================================================
+# SENSORS (Additional monitoring)
+# ============================================================================
+sensor:
+  - platform: statistics
+    name: "Smart Load Daily Peak Demand"
+    entity_id: sensor.grid_demand_calculated
+    state_characteristic: max
+    max_age:
+      hours: 24
+    sampling_size: 1000
+
+  - platform: statistics
+    name: "Smart Load Daily Average Demand"
+    entity_id: sensor.grid_demand_calculated
+    state_characteristic: mean
+    max_age:
+      hours: 24
+    sampling_size: 1000

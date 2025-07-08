@@ -63,15 +63,15 @@ template:
           
           {# Map to peak limit #}
           {% if priority == 1 %}
-            {{ states('input_number.smart_load_peak_p1') | float(3.0) }}
+            {{ states('input_number.peak_p1') | float(3.0) }}
           {% elif priority == 2 %}
-            {{ states('input_number.smart_load_peak_p2') | float(4.0) }}
+            {{ states('input_number.peak_p2') | float(4.0) }}
           {% elif priority == 3 %}
-            {{ states('input_number.smart_load_peak_p3') | float(5.0) }}
+            {{ states('input_number.peak_p3') | float(5.0) }}
           {% elif priority == 4 %}
-            {{ states('input_number.smart_load_peak_p4') | float(6.0) }}
+            {{ states('input_number.peak_p4') | float(6.0) }}
           {% else %}
-            {{ states('input_number.smart_load_peak_p5') | float(7.0) }}
+            {{ states('input_number.peak_p5') | float(7.0) }}
           {% endif %}
         icon: mdi:speedometer
         attributes:
@@ -169,7 +169,7 @@ template:
       - name: "Load Manager Status"
         unique_id: smart_load_manager_status
         state: >
-          {% set emergency = is_state('input_boolean.smart_load_emergency_override', 'on') %}
+          {% set emergency = is_state('input_boolean.emergency_override', 'on') %}
           {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
           {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
           
@@ -183,7 +183,7 @@ template:
             Normal Operation
           {% endif %}
         icon: >
-          {% set emergency = is_state('input_boolean.smart_load_emergency_override', 'on') %}
+          {% set emergency = is_state('input_boolean.emergency_override', 'on') %}
           {% set grid_demand = states('sensor.grid_demand_calculated') | float(0) %}
           {% set peak_limit = states('sensor.current_peak_limit') | float(0) %}
           
@@ -199,7 +199,7 @@ template:
         attributes:
           grid_demand: "{{ states('sensor.grid_demand_calculated') | float(0) }}"
           peak_limit: "{{ states('sensor.current_peak_limit') | float(0) }}"
-          emergency_active: "{{ is_state('input_boolean.smart_load_emergency_override', 'on') }}"
+          emergency_active: "{{ is_state('input_boolean.emergency_override', 'on') }}"
 
   # Binary sensors for status indicators
   - binary_sensor:
@@ -221,78 +221,9 @@ template:
           {{ grid_demand > peak_limit }}
         icon: mdi:alert-outline
 
-# ============================================================================
-# INPUT HELPERS
-# ============================================================================
-input_number:
-  # Peak limits for different priority levels
-  smart_load_peak_p1:
-    name: "Peak Limit P1 (Highest Priority)"
-    min: 1
-    max: 20
-    step: 0.1
-    initial: 3.0
-    unit_of_measurement: "kW"
-    icon: mdi:speedometer
-
-  smart_load_peak_p2:
-    name: "Peak Limit P2"
-    min: 1
-    max: 20
-    step: 0.1
-    initial: 4.0
-    unit_of_measurement: "kW"
-    icon: mdi:speedometer
-
-  smart_load_peak_p3:
-    name: "Peak Limit P3"
-    min: 1
-    max: 20
-    step: 0.1
-    initial: 5.0
-    unit_of_measurement: "kW"
-    icon: mdi:speedometer
-
-  smart_load_peak_p4:
-    name: "Peak Limit P4"
-    min: 1
-    max: 20
-    step: 0.1
-    initial: 6.0
-    unit_of_measurement: "kW"
-    icon: mdi:speedometer
-
-  smart_load_peak_p5:
-    name: "Peak Limit P5 (Lowest Priority)"
-    min: 1
-    max: 20
-    step: 0.1
-    initial: 7.0
-    unit_of_measurement: "kW"
-    icon: mdi:speedometer
-
-  # Battery thresholds
-  smart_load_battery_soc_min:
-    name: "Minimum Battery SoC (Normal)"
-    min: 0
-    max: 100
-    step: 1
-    initial: 60
-    unit_of_measurement: "%"
-    icon: mdi:battery-low
-
-  smart_load_battery_soc_emergency:
-    name: "Minimum Battery SoC (Emergency)"
-    min: 0
-    max: 100
-    step: 1
-    initial: 30
-    unit_of_measurement: "%"
-    icon: mdi:battery-alert
-
 input_boolean:
   smart_load_emergency_override:
-    name: "Emergency Override"
+    name: "Emergency Override (Package)"
     icon: mdi:alert-circle
     initial: false
 
@@ -301,6 +232,10 @@ input_text:
     name: "Load Suspension Order"
     initial: "Sauna → AC Units → Hyundai → Heat Pump → Tesla"
     max: 255
+
+# Note: Peak limits and battery thresholds use blueprint's input helpers:
+# input_number.peak_p1 through peak_p5
+# input_number.battery_soc_min and battery_soc_emergency
 
 # ============================================================================
 # SCRIPTS
@@ -329,7 +264,7 @@ script:
             - number.hyundai_charging_current
       - service: input_boolean.turn_off
         target:
-          entity_id: input_boolean.smart_load_emergency_override
+          entity_id: input_boolean.emergency_override
 
   smart_load_emergency_activate:
     alias: "Smart Load Manager: Activate Emergency Mode"
@@ -338,7 +273,7 @@ script:
     sequence:
       - service: input_boolean.turn_on
         target:
-          entity_id: input_boolean.smart_load_emergency_override
+          entity_id: input_boolean.emergency_override
       - service: persistent_notification.create
         data:
           title: "Smart Load Manager"
@@ -352,7 +287,7 @@ script:
     sequence:
       - service: input_boolean.turn_off
         target:
-          entity_id: input_boolean.smart_load_emergency_override
+          entity_id: input_boolean.emergency_override
       - service: persistent_notification.dismiss
         data:
           notification_id: smart_load_emergency
@@ -368,7 +303,7 @@ automation:
       - platform: state
         entity_id:
           - sensor.load_manager_status
-          - input_boolean.smart_load_emergency_override
+          - input_boolean.emergency_override
           - binary_sensor.over_peak_limit
     action:
       - service: logbook.log
@@ -378,7 +313,7 @@ automation:
             Status: {{ states('sensor.load_manager_status') }}
             Grid Demand: {{ states('sensor.grid_demand_calculated') }}kW
             Peak Limit: {{ states('sensor.current_peak_limit') }}kW
-            Emergency: {{ states('input_boolean.smart_load_emergency_override') }}
+            Emergency: {{ states('input_boolean.emergency_override') }}
             Over Peak: {{ states('binary_sensor.over_peak_limit') }}
 
   - id: smart_load_manager_emergency_notifications
@@ -386,10 +321,10 @@ automation:
     description: "Send notifications for emergency mode changes"
     trigger:
       - platform: state
-        entity_id: input_boolean.smart_load_emergency_override
+        entity_id: input_boolean.emergency_override
         to: 'on'
       - platform: state
-        entity_id: input_boolean.smart_load_emergency_override
+        entity_id: input_boolean.emergency_override
         to: 'off'
     action:
       - service: persistent_notification.create
@@ -416,7 +351,7 @@ automation:
           minutes: 2
     condition:
       - condition: state
-        entity_id: input_boolean.smart_load_emergency_override
+        entity_id: input_boolean.emergency_override
         state: 'off'
     action:
       - service: persistent_notification.create

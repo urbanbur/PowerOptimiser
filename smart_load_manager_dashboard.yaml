@@ -1,0 +1,344 @@
+# Smart Load Manager Dashboard
+# Copy this YAML content into Home Assistant Dashboard (Lovelace UI)
+# Go to Settings > Dashboards > Add Dashboard > Start with an empty dashboard
+# Then switch to YAML mode and paste this content
+
+title: Smart Load Manager
+theme: default
+path: smart-load-manager
+icon: mdi:home-lightning-bolt
+badges: []
+cards:
+  # Header with system status
+  - type: horizontal-stack
+    cards:
+      - type: entity
+        entity: input_boolean.emergency_override
+        name: Emergency Mode
+        icon: mdi:alert-circle
+        state_color: true
+      - type: entity
+        entity: sensor.battery_soc
+        name: Battery SoC
+        icon: mdi:battery
+        state_color: true
+      - type: entity
+        entity: sensor.pv_power
+        name: PV Power
+        icon: mdi:solar-power
+        unit: kW
+      - type: entity
+        entity: sensor.grid_power
+        name: Grid Power
+        icon: mdi:transmission-tower
+        unit: kW
+        state_color: true
+
+  # Power flow visualization
+  - type: custom:power-flow-card
+    entities:
+      grid:
+        entity: sensor.grid_power
+        icon: mdi:transmission-tower
+      battery:
+        entity: sensor.battery_soc
+        state_of_charge_entity: sensor.battery_soc
+        icon: mdi:battery
+      solar:
+        entity: sensor.pv_power
+        icon: mdi:solar-power
+      home:
+        entity: sensor.home_consumption
+        icon: mdi:home
+    title: Power Flow
+
+  # Peak limits and current status
+  - type: entities
+    title: Peak Management
+    show_header_toggle: false
+    entities:
+      - type: section
+        label: Current Status
+      - entity: sensor.grid_demand_calculated
+        name: Grid Demand
+        icon: mdi:gauge
+        secondary_info: last-updated
+      - entity: sensor.current_peak_limit
+        name: Current Peak Limit
+        icon: mdi:speedometer
+        secondary_info: last-updated
+      - entity: sensor.power_margin
+        name: Available Power Margin
+        icon: mdi:battery-plus
+        secondary_info: last-updated
+      - type: section
+        label: Peak Limits Configuration
+      - entity: input_number.peak_p1
+        name: "Priority 1 (Night)"
+      - entity: input_number.peak_p2
+        name: "Priority 2 (Morning/Evening)"
+      - entity: input_number.peak_p3
+        name: "Priority 3 (Day/Night)"
+      - entity: input_number.peak_p4
+        name: "Priority 4 (Weekend+)"
+      - entity: input_number.peak_p5
+        name: "Priority 5 (Summer Weekend)"
+
+  # EV Charging Status
+  - type: entities
+    title: Electric Vehicle Charging
+    show_header_toggle: false
+    entities:
+      - type: section
+        label: Tesla
+      - entity: number.tesla_charging_current
+        name: Tesla Charging Current
+        icon: mdi:car-electric
+      - entity: sensor.tesla_charging_power
+        name: Tesla Charging Power
+        icon: mdi:lightning-bolt
+        secondary_info: last-updated
+      - entity: switch.tesla_charging_enabled
+        name: Tesla Charging Enabled
+        icon: mdi:power
+      - type: section
+        label: Hyundai
+      - entity: number.hyundai_charging_current
+        name: Hyundai Charging Current
+        icon: mdi:car-electric
+      - entity: sensor.hyundai_charging_power
+        name: Hyundai Charging Power
+        icon: mdi:lightning-bolt
+        secondary_info: last-updated
+      - entity: switch.hyundai_charging_enabled
+        name: Hyundai Charging Enabled
+        icon: mdi:power
+
+  # Load Management Status
+  - type: entities
+    title: Managed Loads
+    show_header_toggle: false
+    entities:
+      - type: section
+        label: Primary Loads
+      - entity: switch.heat_pump
+        name: Heat Pump
+        icon: mdi:heat-pump
+        secondary_info: last-updated
+      - entity: switch.sauna
+        name: Sauna
+        icon: mdi:sauna
+        secondary_info: last-updated
+      - type: section
+        label: Air Conditioning
+      - entity: switch.ac_unit_1
+        name: AC Unit 1
+        icon: mdi:air-conditioner
+        secondary_info: last-updated
+      - entity: switch.ac_unit_2
+        name: AC Unit 2
+        icon: mdi:air-conditioner
+        secondary_info: last-updated
+      - entity: switch.ac_unit_3
+        name: AC Unit 3
+        icon: mdi:air-conditioner
+        secondary_info: last-updated
+      - entity: switch.ac_unit_4
+        name: AC Unit 4
+        icon: mdi:air-conditioner
+        secondary_info: last-updated
+
+  # System Controls
+  - type: entities
+    title: System Controls
+    show_header_toggle: false
+    entities:
+      - entity: input_boolean.emergency_override
+        name: Emergency Override
+        icon: mdi:alert-circle
+      - entity: input_number.battery_soc_min
+        name: Min Battery SoC (Normal)
+        icon: mdi:battery-low
+      - entity: input_number.battery_soc_emergency
+        name: Min Battery SoC (Emergency)
+        icon: mdi:battery-alert
+      - entity: automation.smart_load_manager
+        name: Smart Load Manager Automation
+        icon: mdi:robot
+
+  # Power consumption gauges
+  - type: horizontal-stack
+    cards:
+      - type: gauge
+        entity: sensor.grid_demand_calculated
+        name: Grid Demand
+        min: 0
+        max: 10
+        severity:
+          green: 0
+          yellow: 4
+          red: 7
+        needle: true
+      - type: gauge
+        entity: sensor.current_peak_limit
+        name: Peak Limit
+        min: 0
+        max: 10
+        severity:
+          green: 6
+          yellow: 4
+          red: 3
+        needle: true
+      - type: gauge
+        entity: sensor.battery_soc
+        name: Battery SoC
+        min: 0
+        max: 100
+        unit: "%"
+        severity:
+          red: 0
+          yellow: 30
+          green: 60
+        needle: true
+
+  # Historical charts
+  - type: history-graph
+    title: Power Flow History (24h)
+    hours_to_show: 24
+    refresh_interval: 300
+    entities:
+      - entity: sensor.pv_power
+        name: PV Power
+      - entity: sensor.grid_power
+        name: Grid Power
+      - entity: sensor.home_consumption
+        name: Home Consumption
+      - entity: sensor.grid_demand_calculated
+        name: Grid Demand
+
+  - type: history-graph
+    title: Charging History (24h)
+    hours_to_show: 24
+    refresh_interval: 300
+    entities:
+      - entity: number.tesla_charging_current
+        name: Tesla Current
+      - entity: number.hyundai_charging_current
+        name: Hyundai Current
+
+  # Load status overview
+  - type: picture-elements
+    image: /local/images/house_layout.png  # You'll need to add a house layout image
+    elements:
+      - type: state-badge
+        entity: switch.heat_pump
+        style:
+          top: 30%
+          left: 20%
+      - type: state-badge
+        entity: switch.sauna
+        style:
+          top: 70%
+          left: 80%
+      - type: state-badge
+        entity: switch.ac_unit_1
+        style:
+          top: 20%
+          left: 50%
+      - type: state-badge
+        entity: switch.ac_unit_2
+        style:
+          top: 40%
+          left: 70%
+      - type: state-badge
+        entity: number.tesla_charging_current
+        style:
+          top: 80%
+          left: 20%
+      - type: state-badge
+        entity: number.hyundai_charging_current
+        style:
+          top: 80%
+          left: 40%
+
+  # Emergency mode banner
+  - type: conditional
+    conditions:
+      - entity: input_boolean.emergency_override
+        state: "on"
+    card:
+      type: markdown
+      content: |
+        ## ⚠️ EMERGENCY MODE ACTIVE ⚠️
+        
+        - Tesla charging at maximum power (16A)
+        - Battery discharge enabled
+        - Heat pump suspended
+        - Hyundai charging reduced
+        
+        Emergency mode will end when battery SoC drops below {{ states('input_number.battery_soc_emergency') }}%
+      title: Emergency Status
+      theme: red
+
+  # System information
+  - type: entities
+    title: System Information
+    show_header_toggle: false
+    entities:
+      - type: section
+        label: Current Time Period
+      - entity: sensor.current_priority_level
+        name: Priority Level
+        icon: mdi:priority-high
+      - entity: sensor.is_weekend
+        name: Weekend Mode
+        icon: mdi:calendar-weekend
+      - entity: sensor.is_summer
+        name: Summer Mode
+        icon: mdi:weather-sunny
+      - type: section
+        label: Suspension Order
+      - type: custom:fold-entity-row
+        head:
+          type: section
+          label: Load Suspension Priority
+        entities:
+          - entity: input_text.suspension_order
+            name: "1. Sauna (2kW)"
+          - entity: input_text.suspension_order
+            name: "2. AC Units (1.5kW each)"
+          - entity: input_text.suspension_order
+            name: "3. Hyundai Charging (1kW reduction)"
+          - entity: input_text.suspension_order
+            name: "4. Heat Pump (3kW)"
+          - entity: input_text.suspension_order
+            name: "5. Tesla Charging (reduced to 6A)"
+
+  # Quick actions
+  - type: entities
+    title: Quick Actions
+    show_header_toggle: false
+    entities:
+      - type: button
+        name: Toggle Emergency Mode
+        icon: mdi:alert-circle
+        action_name: TOGGLE
+        tap_action:
+          action: toggle
+          entity: input_boolean.emergency_override
+      - type: button
+        name: Reset All Loads
+        icon: mdi:restart
+        action_name: RESET
+        tap_action:
+          action: call-service
+          service: script.reset_all_loads
+      - type: button
+        name: Optimize Now
+        icon: mdi:auto-fix
+        action_name: RUN
+        tap_action:
+          action: call-service
+          service: automation.trigger
+          service_data:
+            entity_id: automation.smart_load_manager

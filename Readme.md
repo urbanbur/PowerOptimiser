@@ -13,7 +13,7 @@ homeassistant:
 
 ### Step 2: Install Package
 1. Create `/config/packages/` directory
-2. Copy `/packages/smart_load_manager.yaml` to `/config/packages/`
+2. Copy `smart_load_manager.yaml` to `/config/packages/`
 3. Update entity names (see Entity Mapping below)
 4. Restart Home Assistant
 
@@ -78,6 +78,61 @@ switch.sauna → switch.sauna_heater
 The package will reference your existing blueprint input helpers for peak limits and battery settings. **No additional input helpers needed!**
 
 The package templates will automatically use the same input helpers that your blueprint created.
+
+## Dashboard Integration
+
+### Step 1: Install Dashboard YAML
+1. Copy the `smart_load_manager_dashboard.yaml` content
+2. Go to **Settings** → **Dashboards** 
+3. Click **+ ADD DASHBOARD** → **New dashboard from scratch**
+4. Name it "Smart Load Manager"
+5. Click the ⋮ menu → **Raw configuration editor**
+6. Paste the dashboard YAML content
+7. Click **SAVE**
+
+### Step 2: Update Dashboard Entity References
+The dashboard YAML needs to reference your actual entities. Update these key sections:
+
+#### Power Flow Card Entities:
+```yaml
+# Update these entities in the power flow card:
+grid: sensor.grid_power              → sensor.your_actual_grid_power
+battery: sensor.battery_soc          → sensor.your_actual_battery_soc  
+solar: sensor.pv_power              → sensor.your_actual_pv_power
+home: sensor.home_consumption       → sensor.your_actual_home_consumption
+```
+
+#### EV Charging Controls:
+```yaml
+# Update charger entities in the dashboard:
+entity: number.tesla_charging_current   → number.your_actual_tesla_charger
+entity: number.hyundai_charging_current → number.your_actual_hyundai_charger
+```
+
+#### Load Status Cards:
+```yaml
+# Update switch entities for load monitoring:
+entity: switch.heat_pump    → switch.your_actual_heat_pump
+entity: switch.sauna        → switch.your_actual_sauna
+# ... etc for AC units
+```
+
+### Step 3: Blueprint Input Helper Integration
+The dashboard automatically uses your blueprint's input helpers:
+- Peak limit sliders: `input_number.peak_p1` through `peak_p5`
+- Battery thresholds: `input_number.battery_soc_min` and `battery_soc_emergency`
+- Emergency override: `input_boolean.emergency_override`
+
+**No changes needed** for these - they'll work automatically with your existing blueprint configuration.
+
+### Step 4: Verify Dashboard
+After saving, you should see:
+- 📊 **Power Flow**: Live grid, solar, battery, and home consumption
+- ⚡ **Peak Management**: Current limits and priority levels
+- 🔋 **EV Charging**: Tesla and Hyundai charging controls
+- 🏠 **Load Status**: Heat pump, sauna, AC units status
+- 🚨 **Emergency**: Quick emergency mode toggle
+- 📈 **Statistics**: Daily peak and average demand tracking
 
 ## Package Features
 

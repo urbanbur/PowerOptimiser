@@ -1,154 +1,125 @@
 # Smart Load Manager Package Setup Guide
 
-## Package Installation
+This package provides dashboard sensors, scripts, and automations that work **alongside** your existing Smart Load Manager blueprint automation. It reuses your blueprint's input helpers and entity selections for seamless integration.
+
+## Quick Setup
 
 ### Step 1: Enable Packages in Home Assistant
-
-Add this to your main `configuration.yaml`:
-
+Add to your `configuration.yaml`:
 ```yaml
 homeassistant:
   packages: !include_dir_named packages
 ```
 
-### Step 2: Create Package Directory
+### Step 2: Install Package
+1. Create `/config/packages/` directory
+2. Copy `smart_load_manager.yaml` to `/config/packages/`
+3. Update entity names (see Entity Mapping below)
+4. Restart Home Assistant
 
-Create a `packages` directory in your Home Assistant config folder:
-```
-/config/
-├── configuration.yaml
-├── packages/
-│   └── smart_load_manager.yaml
-```
-
-### Step 3: Install the Package
-
-1. Copy `smart_load_manager.yaml` to `/config/packages/`
-2. Update entity names to match your actual devices (see Entity Mapping below)
-3. Restart Home Assistant
-
-### Step 4: Verify Installation
-
-After restart, check **Developer Tools** → **States** for new entities:
+### Step 3: Verify
+Check **Developer Tools** → **States** for new entities like:
 - `sensor.grid_demand_calculated`
 - `sensor.current_peak_limit`
 - `sensor.power_margin`
-- `input_number.smart_load_peak_p1` through `p5`
-- `input_boolean.smart_load_emergency_override`
-- And many more...
 
-## Entity Mapping
+## Entity Mapping from Blueprint
 
-Replace these placeholder entities with your actual Home Assistant entities:
+The package is designed to **reuse your existing blueprint input helpers** and entity selections. Here's how to configure it:
 
-### Power Sensors (Required)
+### Step 1: Extract Your Blueprint Configuration
+1. **Settings** → **Automations & Scenes**
+2. Find "Smart Load Manager" automation  
+3. **Edit** → switch to **YAML mode** to see your configuration
+
+### Step 2: Map Your Entities
+From your blueprint YAML, you'll see something like this:
+
 ```yaml
-# Change these in the package file:
-sensor.home_consumption      → your_home_consumption_sensor
-sensor.pv_power             → your_pv_power_sensor
-sensor.battery_soc          → your_battery_soc_sensor
+use_blueprint:
+  path: smart_load_manager_blueprint.yaml
+  input:
+    pv_power: sensor.solaredge_current_power
+    grid_power: sensor.grid_power_import_export
+    home_consumption: sensor.house_consumption_w
+    battery_soc: sensor.solaredge_battery_level
+    emergency_override: input_boolean.emergency_charging_mode
+    tesla_charger: number.tesla_wall_connector_charging_amps
+    hyundai_charger: number.ioniq5_charging_current
+    heat_pump: switch.heat_pump_main
+    sauna: switch.sauna_heater
+    # ... etc
 ```
 
-### EV Chargers (Required)
+### Step 3: Update Package File
+Replace the placeholder entities in `smart_load_manager.yaml` with your actual entities:
+
 ```yaml
-number.tesla_charging_current   → your_tesla_charger_entity
-number.hyundai_charging_current → your_hyundai_charger_entity
+# Power sensors:
+sensor.home_consumption → sensor.house_consumption_w
+sensor.pv_power → sensor.solaredge_current_power
+sensor.grid_power → sensor.grid_power_import_export
+sensor.battery_soc → sensor.solaredge_battery_level
+
+# EV chargers:
+number.tesla_charging_current → number.tesla_wall_connector_charging_amps
+number.hyundai_charging_current → number.ioniq5_charging_current
+
+# Emergency control:
+input_boolean.emergency_override → input_boolean.emergency_charging_mode
+
+# Optional loads (only if you configured them):
+switch.heat_pump → switch.heat_pump_main
+switch.sauna → switch.sauna_heater
+# ... etc
 ```
 
-### Managed Loads (Optional - only if you have them)
-```yaml
-switch.heat_pump    → your_heat_pump_switch
-switch.sauna        → your_sauna_switch
-switch.ac_unit_1    → your_ac_unit_1_switch
-switch.ac_unit_2    → your_ac_unit_2_switch
-switch.ac_unit_3    → your_ac_unit_3_switch
-switch.ac_unit_4    → your_ac_unit_4_switch
-```
+### Step 4: Reuse Blueprint Input Helpers
+The package will reference your existing blueprint input helpers for peak limits and battery settings. **No additional input helpers needed!**
+
+The package templates will automatically use the same input helpers that your blueprint created.
 
 ## Package Features
 
-### 📊 Template Sensors
-- **Grid Demand Calculator**: `sensor.grid_demand_calculated`
-- **Dynamic Peak Limits**: `sensor.current_peak_limit`
+### 📊 Key Sensors
+- **Grid Demand**: `sensor.grid_demand_calculated`
+- **Peak Limits**: `sensor.current_peak_limit` (dynamic based on time/conditions)
 - **Power Margin**: `sensor.power_margin`
-- **Priority Level**: `sensor.current_priority_level`
-- **EV Power Estimates**: `sensor.tesla_charging_power`, `sensor.hyundai_charging_power`
 - **System Status**: `sensor.load_manager_status`
-- **Statistics**: Daily peak and average demand
+- **EV Power**: `sensor.tesla_charging_power`, `sensor.hyundai_charging_power`
 
-### 🎛️ Input Helpers
-- **Peak Limits**: `input_number.smart_load_peak_p1` through `p5`
-- **Battery Thresholds**: `input_number.smart_load_battery_soc_min/emergency`
-- **Emergency Override**: `input_boolean.smart_load_emergency_override`
-- **Info Display**: `input_text.smart_load_suspension_order`
+### 🤖 Scripts & Automations
+- **Reset Loads**: `script.smart_load_reset_all_loads`
+- **Emergency Controls**: Activate/deactivate scripts
+- **Notifications**: Automatic alerts for emergency mode and peak warnings
+- **Logging**: State change tracking
 
-### 🤖 Scripts
-- **Reset All Loads**: `script.smart_load_reset_all_loads`
-- **Emergency Activate**: `script.smart_load_emergency_activate`
-- **Emergency Deactivate**: `script.smart_load_emergency_deactivate`
-
-### 🔔 Automations
-- **State Logger**: Logs all important changes
-- **Emergency Notifications**: Alerts for emergency mode changes
-- **Peak Warnings**: Notifications when exceeding limits
-
-### 📈 Binary Sensors
-- **Weekend Detection**: `binary_sensor.is_weekend`
-- **Summer Detection**: `binary_sensor.is_summer`
-- **Over Peak Alert**: `binary_sensor.over_peak_limit`
-
-## Package Benefits
-
-### ✅ **Complete Isolation**
-- All Smart Load Manager entities in one file
-- No conflicts with existing configuration
-- Easy to backup, share, or remove
-
-### ✅ **Organized Naming**
-- All entities prefixed with `smart_load_` 
-- Clear hierarchy and grouping
-- No naming conflicts
-
-### ✅ **Self-Contained**
-- Everything needed for the dashboard
-- All supporting automations included
-- Ready-to-use scripts
-
-### ✅ **Enhanced Features**
-- Statistics sensors for daily tracking
-- Notification system for alerts
-- Multiple script options
-- Detailed entity attributes
-
-## Dashboard Integration
-
-The package creates all entities needed for the dashboard. Update your dashboard YAML to use the new entity names:
-
-```yaml
-# Old entity names → New package entity names
-sensor.grid_demand_calculated → sensor.grid_demand_calculated (same)
-input_number.peak_p1 → input_number.smart_load_peak_p1
-input_boolean.emergency_override → input_boolean.smart_load_emergency_override
-# etc.
-```
+### 📈 Statistics & Monitoring
+- Daily peak and average demand tracking
+- Weekend/summer detection
+- Over-peak alerts
 
 ## Customization
 
 ### Modify Peak Limits
-Edit the `initial:` values in the `input_number` section:
-```yaml
-smart_load_peak_p1:
-  initial: 3.0  # Change this value
-```
+Use the existing input helpers from your blueprint automation:
+- **Settings** → **Devices & Services** → **Helpers**
+- Search for "peak_p1", "peak_p2", etc.
+- Adjust values as needed
+
+### Battery Thresholds
+Similarly, modify your blueprint's battery thresholds:
+- `input_number.battery_soc_min` - Minimum SoC for load suspension
+- `input_number.battery_soc_emergency` - Emergency charging threshold
 
 ### Add More Devices
-Add additional switches or sensors by copying the existing patterns.
+To add additional loads to the package:
+1. Add switch entities to the appropriate sections
+2. Update the suspension logic in the scripts
+3. Add status tracking in the template sensors
 
 ### Customize Notifications
-Modify the automation messages and conditions in the automation section.
-
-### Change Time Schedules
-Update the time-based priority logic in the template sensors.
+Modify the automation messages and conditions in the automation section of the package file.
 
 ## Troubleshooting
 

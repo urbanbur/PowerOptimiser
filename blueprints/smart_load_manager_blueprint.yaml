@@ -232,7 +232,7 @@ action:
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input heat_pump
+                  entity_id: "{{ input.heat_pump }}"
           # Keep sauna available during emergency
           - if:
               - condition: template
@@ -240,7 +240,7 @@ action:
             then:
               - service: switch.turn_on
                 target:
-                  entity_id: !input sauna
+                  entity_id: "{{ input.sauna }}"
       
       # Emergency but low battery: End emergency operation
       - conditions:
@@ -264,14 +264,14 @@ action:
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input heat_pump
+                  entity_id: "{{ input.heat_pump }}"
           - if:
               - condition: template
                 value_template: "{{ input.sauna != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input sauna
+                  entity_id: "{{ input.sauna }}"
           # Turn off all AC units
           - if:
               - condition: template
@@ -279,28 +279,28 @@ action:
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_1
+                  entity_id: "{{ input.ac_unit_1 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_2 != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_2
+                  entity_id: "{{ input.ac_unit_2 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_3 != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_3
+                  entity_id: "{{ input.ac_unit_3 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_4 != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_4
+                  entity_id: "{{ input.ac_unit_4 }}"
       
       # Normal operation: Grid demand exceeds peak limit
       - conditions:
@@ -319,7 +319,7 @@ action:
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input sauna
+                  entity_id: "{{ input.sauna }}"
           
           # Step 2: Suspend AC units (estimated 1.5kW each)
           - if:
@@ -328,28 +328,28 @@ action:
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_1
+                  entity_id: "{{ input.ac_unit_1 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_2 != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_2
+                  entity_id: "{{ input.ac_unit_2 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_3 != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_3
+                  entity_id: "{{ input.ac_unit_3 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_4 != '' }}"
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input ac_unit_4
+                  entity_id: "{{ input.ac_unit_4 }}"
           
           # Step 3: Reduce Hyundai charging to minimum
           - service: number.set_value
@@ -365,7 +365,7 @@ action:
             then:
               - service: switch.turn_off
                 target:
-                  entity_id: !input heat_pump
+                  entity_id: "{{ input.heat_pump }}"
           
           # Always reduce Tesla charging in over-peak situations
           - service: number.set_value
@@ -423,11 +423,11 @@ action:
                 then:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input heat_pump
+                      entity_id: "{{ input.heat_pump }}"
                 else:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input heat_pump
+                      entity_id: "{{ input.heat_pump }}"
           
           # Priority 2: AC units (need 1.5kW margin each)
           - if:
@@ -440,11 +440,11 @@ action:
                 then:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input ac_unit_1
+                      entity_id: "{{ input.ac_unit_1 }}"
                 else:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input ac_unit_1
+                      entity_id: "{{ input.ac_unit_1 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_2 != '' }}"
@@ -455,11 +455,11 @@ action:
                 then:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input ac_unit_2
+                      entity_id: "{{ input.ac_unit_2 }}"
                 else:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input ac_unit_2
+                      entity_id: "{{ input.ac_unit_2 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_3 != '' }}"
@@ -470,11 +470,11 @@ action:
                 then:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input ac_unit_3
+                      entity_id: "{{ input.ac_unit_3 }}"
                 else:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input ac_unit_3
+                      entity_id: "{{ input.ac_unit_3 }}"
           - if:
               - condition: template
                 value_template: "{{ input.ac_unit_4 != '' }}"
@@ -485,11 +485,11 @@ action:
                 then:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input ac_unit_4
+                      entity_id: "{{ input.ac_unit_4 }}"
                 else:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input ac_unit_4
+                      entity_id: "{{ input.ac_unit_4 }}"
           
           # Priority 3: Sauna (needs 2kW margin)
           - if:
@@ -502,9 +502,9 @@ action:
                 then:
                   - service: switch.turn_on
                     target:
-                      entity_id: !input sauna
+                      entity_id: "{{ input.sauna }}"
                 else:
                   - service: switch.turn_off
                     target:
-                      entity_id: !input sauna
+                      entity_id: "{{ input.sauna }}"
 mode: single
